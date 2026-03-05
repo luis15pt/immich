@@ -13,12 +13,13 @@ FROM builder AS server
 
 WORKDIR /usr/src/app
 COPY ./server ./server/
+COPY ./packages/plugin-sdk ./packages/plugin-sdk/
 RUN --mount=type=cache,id=pnpm-server,target=/buildcache/pnpm-store \
   --mount=type=bind,source=package.json,target=package.json \
   --mount=type=bind,source=.pnpmfile.cjs,target=.pnpmfile.cjs \
   --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
   --mount=type=bind,source=pnpm-workspace.yaml,target=pnpm-workspace.yaml \
-  SHARP_IGNORE_GLOBAL_LIBVIPS=true pnpm --filter immich --frozen-lockfile build && \
+  SHARP_IGNORE_GLOBAL_LIBVIPS=true pnpm --filter immich --filter @immich/plugin-sdk --frozen-lockfile build && \
   SHARP_FORCE_GLOBAL_LIBVIPS=true pnpm --filter immich --frozen-lockfile --prod --no-optional deploy /output/server-pruned
 
 FROM builder AS web
@@ -55,21 +56,21 @@ ARG TARGETPLATFORM
 COPY --from=ghcr.io/jdx/mise:2026.1.1@sha256:a55c391f7582f34c58bce1a85090cd526596402ba77fc32b06c49b8404ef9c14 /usr/local/bin/mise /usr/local/bin/mise
 
 WORKDIR /usr/src/app
-COPY ./plugins/mise.toml ./plugins/
-ENV MISE_TRUSTED_CONFIG_PATHS=/usr/src/app/plugins/mise.toml
+COPY ./packages/plugin-core/mise.toml ./packages/plugin-core/
+ENV MISE_TRUSTED_CONFIG_PATHS=/usr/src/app/packages/plugin-core/mise.toml
 ENV MISE_DATA_DIR=/buildcache/mise
 RUN --mount=type=cache,id=mise-tools-${TARGETPLATFORM},target=/buildcache/mise \
-  mise install --cd plugins
+  mise install --cd packages/plugin-core
 
-COPY ./plugins ./plugins/
+COPY ./packages ./packages/
 # Build plugins
-RUN --mount=type=cache,id=pnpm-plugins,target=/buildcache/pnpm-store \
+RUN --mount=type=cache,id=pnpm-packages,target=/buildcache/pnpm-store \
   --mount=type=bind,source=package.json,target=package.json \
   --mount=type=bind,source=.pnpmfile.cjs,target=.pnpmfile.cjs \
   --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
   --mount=type=bind,source=pnpm-workspace.yaml,target=pnpm-workspace.yaml \
   --mount=type=cache,id=mise-tools-${TARGETPLATFORM},target=/buildcache/mise \
-  cd plugins && mise run build
+  cd packages/plugin-core && mise run build
 
 FROM ghcr.io/immich-app/base-server-prod:202603031112@sha256:bb8c8645ee61977140121e56ba09db7ae656a7506f9a6af1be8461b4d81fdf03
 
@@ -81,8 +82,8 @@ ENV NODE_ENV=production \
 COPY --from=server /output/server-pruned ./server
 COPY --from=web /usr/src/app/web/build /build/www
 COPY --from=cli /output/cli-pruned ./cli
-COPY --from=plugins /usr/src/app/plugins/dist /build/corePlugin/dist
-COPY --from=plugins /usr/src/app/plugins/manifest.json /build/corePlugin/manifest.json
+COPY --from=plugins /usr/src/app/packages/plugin-core/dist /build/corePlugin/dist
+COPY --from=plugins /usr/src/app/packages/plugin-core/manifest.json /build/corePlugin/manifest.json
 RUN ln -s ../../cli/bin/immich server/bin/immich
 COPY LICENSE /licenses/LICENSE.txt
 COPY LICENSE /LICENSE

@@ -544,8 +544,11 @@ export enum BootstrapEventPriority {
   StorageService = -195,
   // Other services may need to queue jobs on bootstrap.
   JobService = -190,
-  // Initialise config after other bootstrap services, stop other services from using config on bootstrap
+  // Initialize config after other bootstrap services, stop other services from using config on bootstrap
   SystemConfig = 100,
+  PluginSync = 190,
+  // Load plugins into memory after sync
+  PluginLoad = 200,
 }
 
 export enum QueueName {
@@ -655,7 +658,7 @@ export enum JobName {
   Ocr = 'Ocr',
 
   // Workflow
-  WorkflowRun = 'WorkflowRun',
+  WorkflowAssetCreate = 'WorkflowAssetCreate',
 }
 
 export enum QueueCommand {
@@ -694,6 +697,7 @@ export enum DatabaseLock {
   CLIPDimSize = 512,
   Library = 1337,
   NightlyJobs = 600,
+  PluginImport = 666,
   MediaLocation = 700,
   GetSystemConfig = 69,
   BackupDatabase = 42,
@@ -882,13 +886,12 @@ export enum ApiTag {
   Workflows = 'Workflows',
 }
 
-export enum PluginContext {
-  Asset = 'asset',
-  Album = 'album',
-  Person = 'person',
-}
-
-export enum PluginTriggerType {
+export enum WorkflowTrigger {
   AssetCreate = 'AssetCreate',
   PersonRecognized = 'PersonRecognized',
+}
+
+export enum WorkflowType {
+  AssetV1 = 'AssetV1',
+  AssetPersonV1 = 'AssetPersonV1',
 }

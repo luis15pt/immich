@@ -1,6 +1,6 @@
 import { SystemConfig } from 'src/config';
 import { VECTOR_EXTENSIONS } from 'src/constants';
-import { Asset, AssetFile } from 'src/database';
+import { AssetFile } from 'src/database';
 import { UploadFieldName } from 'src/dtos/asset-media.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { AssetEditActionItem } from 'src/dtos/editing.dto';
@@ -12,7 +12,6 @@ import {
   ImageFormat,
   JobName,
   MemoryType,
-  PluginTriggerType,
   QueueName,
   StorageFolder,
   SyncEntityType,
@@ -20,6 +19,8 @@ import {
   TranscodeTarget,
   UserMetadataKey,
   VideoCodec,
+  WorkflowTrigger,
+  WorkflowType,
 } from 'src/enum';
 
 export type DeepPartial<T> =
@@ -259,22 +260,11 @@ export interface INotifyAlbumUpdateJob extends IEntityJob, IDelayedJob {
   recipientId: string;
 }
 
-export interface WorkflowData {
-  [PluginTriggerType.AssetCreate]: {
-    userId: string;
-    asset: Asset;
-  };
-  [PluginTriggerType.PersonRecognized]: {
-    personId: string;
-    assetId: string;
-  };
-}
-
-export interface IWorkflowJob<T extends PluginTriggerType = PluginTriggerType> {
+export type IWorkflowJob<T extends WorkflowType = WorkflowType> = {
   id: string;
+  trigger: WorkflowTrigger;
   type: T;
-  event: WorkflowData[T];
-}
+};
 
 export interface JobCounts {
   active: number;
@@ -385,7 +375,7 @@ export type JobItem =
   | { name: JobName.Ocr; data: IEntityJob }
 
   // Workflow
-  | { name: JobName.WorkflowRun; data: IWorkflowJob }
+  | { name: JobName.WorkflowAssetCreate; data: { workflowId: string; assetId: string } }
 
   // Editor
   | { name: JobName.AssetEditThumbnailGeneration; data: IEntityJob };
@@ -547,4 +537,24 @@ export interface UserMetadata extends Record<UserMetadataKey, Record<string, any
   [UserMetadataKey.Preferences]: DeepPartial<UserPreferences>;
   [UserMetadataKey.License]: { licenseKey: string; activationKey: string; activatedAt: string };
   [UserMetadataKey.Onboarding]: { isOnboarded: boolean };
+}
+
+export type JSONSchemaType = 'string' | 'number' | 'integer' | 'boolean' | 'object';
+
+export type JSONSchemaProperty = {
+  type: 'object';
+  description?: string;
+  default?: any;
+  enum?: string[];
+  array?: boolean;
+  properties?: Record<string, JSONSchemaProperty>;
+  required?: string[];
+};
+
+export interface JSONSchema {
+  type: 'object';
+  properties?: Record<string, JSONSchemaProperty>;
+  required?: string[];
+  additionalProperties?: boolean;
+  description?: string;
 }

@@ -3,7 +3,6 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
-  IsEnum,
   IsNotEmpty,
   IsObject,
   IsOptional,
@@ -12,66 +11,31 @@ import {
   Matches,
   ValidateNested,
 } from 'class-validator';
-import { PluginContext } from 'src/enum';
-import { JSONSchema } from 'src/types/plugin-schema.types';
+import { WorkflowType } from 'src/enum';
+import { JSONSchema } from 'src/types';
 import { ValidateEnum } from 'src/validation';
 
-class PluginManifestWasmDto {
-  @ApiProperty({ description: 'WASM file path' })
+class PluginManifestMethodDto {
+  @ApiProperty({ description: 'Method name' })
   @IsString()
   @IsNotEmpty()
-  path!: string;
-}
+  name!: string;
 
-class PluginManifestFilterDto {
-  @ApiProperty({ description: 'Filter method name' })
-  @IsString()
-  @IsNotEmpty()
-  methodName!: string;
-
-  @ApiProperty({ description: 'Filter title' })
+  @ApiProperty({ description: 'Method title' })
   @IsString()
   @IsNotEmpty()
   title!: string;
 
-  @ApiProperty({ description: 'Filter description' })
-  @IsString()
-  @IsNotEmpty()
-  description!: string;
-
-  @ApiProperty({ description: 'Supported contexts', enum: PluginContext, isArray: true })
-  @IsArray()
-  @ArrayMinSize(1)
-  @IsEnum(PluginContext, { each: true })
-  supportedContexts!: PluginContext[];
-
-  @ApiPropertyOptional({ description: 'Filter schema' })
-  @IsObject()
-  @IsOptional()
-  schema?: JSONSchema;
-}
-
-class PluginManifestActionDto {
-  @ApiProperty({ description: 'Action method name' })
-  @IsString()
-  @IsNotEmpty()
-  methodName!: string;
-
-  @ApiProperty({ description: 'Action title' })
-  @IsString()
-  @IsNotEmpty()
-  title!: string;
-
-  @ApiProperty({ description: 'Action description' })
+  @ApiProperty({ description: 'Method description' })
   @IsString()
   @IsNotEmpty()
   description!: string;
 
   @ArrayMinSize(1)
-  @ValidateEnum({ enum: PluginContext, name: 'PluginContext', each: true, description: 'Supported contexts' })
-  supportedContexts!: PluginContext[];
+  @ValidateEnum({ enum: WorkflowType, name: 'WorkflowType', each: true, description: 'Workflow type' })
+  types!: WorkflowType[];
 
-  @ApiPropertyOptional({ description: 'Action schema' })
+  @ApiPropertyOptional({ description: 'Method schema' })
   @IsObject()
   @IsOptional()
   schema?: JSONSchema;
@@ -102,27 +66,20 @@ export class PluginManifestDto {
   @IsNotEmpty()
   description!: string;
 
+  @ApiProperty({ description: 'WASM file path' })
+  @IsString()
+  @IsNotEmpty()
+  wasmPath!: string;
+
   @ApiProperty({ description: 'Plugin author' })
   @IsString()
   @IsNotEmpty()
   author!: string;
 
-  @ApiProperty({ description: 'WASM configuration' })
-  @ValidateNested()
-  @Type(() => PluginManifestWasmDto)
-  wasm!: PluginManifestWasmDto;
-
   @ApiPropertyOptional({ description: 'Plugin filters' })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => PluginManifestFilterDto)
+  @Type(() => PluginManifestMethodDto)
   @IsOptional()
-  filters?: PluginManifestFilterDto[];
-
-  @ApiPropertyOptional({ description: 'Plugin actions' })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => PluginManifestActionDto)
-  @IsOptional()
-  actions?: PluginManifestActionDto[];
+  methods!: PluginManifestMethodDto[];
 }

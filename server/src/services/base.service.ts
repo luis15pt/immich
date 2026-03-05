@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { ClassConstructor } from 'class-transformer';
 import { Insertable } from 'kysely';
 import sanitize from 'sanitize-filename';
 import { SystemConfig } from 'src/config';
@@ -185,6 +186,67 @@ export class BaseService {
       systemMetadataRepository,
       this.logger,
     );
+  }
+
+  static create<T extends BaseService>(Service: ClassConstructor<T>, ctx: BaseService) {
+    const service = new Service(
+      LoggingRepository.create(),
+      ctx.accessRepository,
+      ctx.activityRepository,
+      ctx.albumRepository,
+      ctx.albumUserRepository,
+      ctx.apiKeyRepository,
+      ctx.appRepository,
+      ctx.assetRepository,
+      ctx.assetEditRepository,
+      ctx.assetJobRepository,
+      ctx.auditRepository,
+      ctx.configRepository,
+      ctx.cronRepository,
+      ctx.cryptoRepository,
+      ctx.databaseRepository,
+      ctx.downloadRepository,
+      ctx.duplicateRepository,
+      ctx.emailRepository,
+      ctx.eventRepository,
+      ctx.jobRepository,
+      ctx.libraryRepository,
+      ctx.machineLearningRepository,
+      ctx.mapRepository,
+      ctx.mediaRepository,
+      ctx.memoryRepository,
+      ctx.metadataRepository,
+      ctx.moveRepository,
+      ctx.notificationRepository,
+      ctx.oauthRepository,
+      ctx.ocrRepository,
+      ctx.partnerRepository,
+      ctx.personRepository,
+      ctx.pluginRepository,
+      ctx.processRepository,
+      ctx.searchRepository,
+      ctx.serverInfoRepository,
+      ctx.sessionRepository,
+      ctx.sharedLinkRepository,
+      ctx.sharedLinkAssetRepository,
+      ctx.stackRepository,
+      ctx.storageRepository,
+      ctx.syncRepository,
+      ctx.syncCheckpointRepository,
+      ctx.systemMetadataRepository,
+      ctx.tagRepository,
+      ctx.telemetryRepository,
+      ctx.trashRepository,
+      ctx.userRepository,
+      ctx.versionRepository,
+      ctx.viewRepository,
+      ctx.websocketRepository,
+      ctx.workflowRepository,
+    );
+
+    service.logger.setContext(this.name);
+
+    return service as T;
   }
 
   get worker() {

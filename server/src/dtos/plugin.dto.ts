@@ -1,15 +1,28 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString } from 'class-validator';
-import { PluginAction, PluginFilter } from 'src/database';
-import { PluginContext as PluginContextType, PluginTriggerType } from 'src/enum';
-import type { JSONSchema } from 'src/types/plugin-schema.types';
-import { ValidateEnum } from 'src/validation';
+import { PluginMethod } from 'src/database';
+import { WorkflowType } from 'src/enum';
+import { JSONSchema } from 'src/types';
+import { ValidateBoolean, ValidateString, ValidateUUID } from 'src/validation';
 
-export class PluginTriggerResponseDto {
-  @ValidateEnum({ enum: PluginTriggerType, name: 'PluginTriggerType', description: 'Trigger type' })
-  type!: PluginTriggerType;
-  @ValidateEnum({ enum: PluginContextType, name: 'PluginContextType', description: 'Context type' })
-  contextType!: PluginContextType;
+export class PluginSearchDto {
+  @ValidateUUID({ optional: true, description: 'Plugin ID' })
+  id?: string;
+
+  @ValidateBoolean({ optional: true, description: 'Whether the plugin is enabled' })
+  enabled?: boolean;
+
+  @ValidateString({ optional: true })
+  name?: string;
+
+  @ValidateString({ optional: true })
+  version?: string;
+
+  @ValidateString({ optional: true })
+  title?: string;
+
+  @ValidateString({ optional: true })
+  description?: string;
 }
 
 export class PluginResponseDto {
@@ -29,45 +42,30 @@ export class PluginResponseDto {
   createdAt!: string;
   @ApiProperty({ description: 'Last update date' })
   updatedAt!: string;
-  @ApiProperty({ description: 'Plugin filters' })
-  filters!: PluginFilterResponseDto[];
-  @ApiProperty({ description: 'Plugin actions' })
-  actions!: PluginActionResponseDto[];
+  @ApiProperty({ description: 'Plugin methods' })
+  methods!: PluginMethodResponseDto[];
 }
 
-export class PluginFilterResponseDto {
-  @ApiProperty({ description: 'Filter ID' })
+export class PluginMethodResponseDto {
+  @ApiProperty({ description: 'ID' })
   id!: string;
   @ApiProperty({ description: 'Plugin ID' })
   pluginId!: string;
-  @ApiProperty({ description: 'Method name' })
-  methodName!: string;
-  @ApiProperty({ description: 'Filter title' })
+  @ApiProperty({ description: 'Name' })
+  name!: string;
+  @ApiProperty({ description: 'Title' })
   title!: string;
-  @ApiProperty({ description: 'Filter description' })
+  @ApiProperty({ description: 'Description' })
   description!: string;
-
-  @ValidateEnum({ enum: PluginContextType, name: 'PluginContextType', each: true, description: 'Supported contexts' })
-  supportedContexts!: PluginContextType[];
-  @ApiProperty({ description: 'Filter schema' })
-  schema!: JSONSchema | null;
-}
-
-export class PluginActionResponseDto {
-  @ApiProperty({ description: 'Action ID' })
-  id!: string;
-  @ApiProperty({ description: 'Plugin ID' })
-  pluginId!: string;
-  @ApiProperty({ description: 'Method name' })
-  methodName!: string;
-  @ApiProperty({ description: 'Action title' })
-  title!: string;
-  @ApiProperty({ description: 'Action description' })
-  description!: string;
-
-  @ValidateEnum({ enum: PluginContextType, name: 'PluginContextType', each: true, description: 'Supported contexts' })
-  supportedContexts!: PluginContextType[];
-  @ApiProperty({ description: 'Action schema' })
+  @ValidateString({
+    // TODO need enum validation for non-enum type
+    // enum: WorkflowType,
+    name: 'PluginTypes',
+    // each: true,
+    description: 'Supported types',
+  })
+  types!: WorkflowType[];
+  @ApiProperty({ description: 'Schema' })
   schema!: JSONSchema | null;
 }
 
@@ -85,11 +83,9 @@ export type MapPlugin = {
   description: string;
   author: string;
   version: string;
-  wasmPath: string;
   createdAt: Date;
   updatedAt: Date;
-  filters: PluginFilter[];
-  actions: PluginAction[];
+  methods: PluginMethod[];
 };
 
 export function mapPlugin(plugin: MapPlugin): PluginResponseDto {
@@ -102,7 +98,6 @@ export function mapPlugin(plugin: MapPlugin): PluginResponseDto {
     version: plugin.version,
     createdAt: plugin.createdAt.toISOString(),
     updatedAt: plugin.updatedAt.toISOString(),
-    filters: plugin.filters,
-    actions: plugin.actions,
+    methods: plugin.methods,
   };
 }

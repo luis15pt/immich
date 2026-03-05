@@ -73,7 +73,7 @@ const envData: EnvData = {
       root: '/build/www',
       indexHtml: '/build/www/index.html',
     },
-    corePlugin: '/build/corePlugin',
+    corePlugin: '/build/plugins/immich-plugin-core',
   },
 
   setup: {

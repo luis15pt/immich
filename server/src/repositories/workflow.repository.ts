@@ -1,131 +1,101 @@
 import { Injectable } from '@nestjs/common';
 import { Insertable, Kysely, Updateable } from 'kysely';
+import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
+import { columns } from 'src/database';
 import { DummyValue, GenerateSql } from 'src/decorators';
-import { PluginTriggerType } from 'src/enum';
+import { WorkflowSearchDto, WorkflowStepDto } from 'src/dtos/workflow.dto';
 import { DB } from 'src/schema';
-import { WorkflowActionTable, WorkflowFilterTable, WorkflowTable } from 'src/schema/tables/workflow.table';
+import { WorkflowTable } from 'src/schema/tables/workflow.table';
 
 @Injectable()
 export class WorkflowRepository {
   constructor(@InjectKysely() private db: Kysely<DB>) {}
 
-  @GenerateSql({ params: [DummyValue.UUID] })
-  getWorkflow(id: string) {
+  private queryBuilder() {
     return this.db
       .selectFrom('workflow')
       .selectAll()
-      .where('id', '=', id)
+      .select((eb) => [
+        jsonArrayFrom(
+          eb.selectFrom('workflow_step').selectAll().whereRef('workflow_step.workflowId', '=', 'workflow.id'),
+        ).as('steps'),
+      ]);
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID] })
+  search(dto: WorkflowSearchDto & { ownerId?: string }) {
+    return this.queryBuilder()
+      .$if(!!dto.ownerId, (qb) => qb.where('ownerId', '=', dto.ownerId!))
+      .$if(!!dto.trigger, (qb) => qb.where('trigger', '=', dto.trigger!))
+      .$if(dto.enabled !== undefined, (qb) => qb.where('enabled', '=', dto.enabled!))
       .orderBy('createdAt', 'desc')
+      .execute();
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID] })
+  get(id: string) {
+    return this.queryBuilder().where('id', '=', id).executeTakeFirst();
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID] })
+  getForWorkflowRun(id: string) {
+    return this.db
+      .selectFrom('workflow')
+      .select(['workflow.id', 'workflow.name', 'workflow.trigger'])
+      .select((eb) => [
+        jsonArrayFrom(
+          eb
+            .selectFrom('workflow_step')
+            .innerJoin('plugin_method', 'plugin_method.id', 'workflow_step.pluginMethodId')
+            .whereRef('workflow_step.workflowId', '=', 'workflow.id')
+            .where('workflow_step.enabled', '=', true)
+            .select([
+              'workflow_step.id',
+              'workflow_step.config',
+              'plugin_method.pluginId as pluginId',
+              'plugin_method.name as methodName',
+              'plugin_method.types as types',
+            ]),
+        ).as('steps'),
+      ])
+      .where('id', '=', id)
+      .where('enabled', '=', true)
       .executeTakeFirst();
   }
 
-  @GenerateSql({ params: [DummyValue.UUID] })
-  getWorkflowsByOwner(ownerId: string) {
+  create(workflow: Insertable<WorkflowTable>) {
+    return this.db.insertInto('workflow').values(workflow).returningAll().executeTakeFirstOrThrow();
+  }
+
+  update(id: string, workflow: Updateable<WorkflowTable>) {
+    // handle empty update
+    if (Object.values(workflow).filter((prop) => prop !== undefined).length === 0) {
+      return this.queryBuilder().where('id', '=', id).executeTakeFirstOrThrow();
+    }
+
     return this.db
-      .selectFrom('workflow')
-      .selectAll()
-      .where('ownerId', '=', ownerId)
-      .orderBy('createdAt', 'desc')
-      .execute();
-  }
-
-  @GenerateSql({ params: [PluginTriggerType.AssetCreate] })
-  getWorkflowsByTrigger(type: PluginTriggerType) {
-    return this.db
-      .selectFrom('workflow')
-      .selectAll()
-      .where('triggerType', '=', type)
-      .where('enabled', '=', true)
-      .execute();
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID, PluginTriggerType.AssetCreate] })
-  getWorkflowByOwnerAndTrigger(ownerId: string, type: PluginTriggerType) {
-    return this.db
-      .selectFrom('workflow')
-      .selectAll()
-      .where('ownerId', '=', ownerId)
-      .where('triggerType', '=', type)
-      .where('enabled', '=', true)
-      .execute();
-  }
-
-  async createWorkflow(
-    workflow: Insertable<WorkflowTable>,
-    filters: Insertable<WorkflowFilterTable>[],
-    actions: Insertable<WorkflowActionTable>[],
-  ) {
-    return await this.db.transaction().execute(async (tx) => {
-      const createdWorkflow = await tx.insertInto('workflow').values(workflow).returningAll().executeTakeFirstOrThrow();
-
-      if (filters.length > 0) {
-        const newFilters = filters.map((filter) => ({
-          ...filter,
-          workflowId: createdWorkflow.id,
-        }));
-
-        await tx.insertInto('workflow_filter').values(newFilters).execute();
-      }
-
-      if (actions.length > 0) {
-        const newActions = actions.map((action) => ({
-          ...action,
-          workflowId: createdWorkflow.id,
-        }));
-        await tx.insertInto('workflow_action').values(newActions).execute();
-      }
-
-      return createdWorkflow;
-    });
-  }
-
-  async updateWorkflow(
-    id: string,
-    workflow: Updateable<WorkflowTable>,
-    filters: Insertable<WorkflowFilterTable>[] | undefined,
-    actions: Insertable<WorkflowActionTable>[] | undefined,
-  ) {
-    return await this.db.transaction().execute(async (trx) => {
-      if (Object.keys(workflow).length > 0) {
-        await trx.updateTable('workflow').set(workflow).where('id', '=', id).execute();
-      }
-
-      if (filters !== undefined) {
-        await trx.deleteFrom('workflow_filter').where('workflowId', '=', id).execute();
-        if (filters.length > 0) {
-          const filtersWithWorkflowId = filters.map((filter) => ({
-            ...filter,
-            workflowId: id,
-          }));
-          await trx.insertInto('workflow_filter').values(filtersWithWorkflowId).execute();
-        }
-      }
-
-      if (actions !== undefined) {
-        await trx.deleteFrom('workflow_action').where('workflowId', '=', id).execute();
-        if (actions.length > 0) {
-          const actionsWithWorkflowId = actions.map((action) => ({
-            ...action,
-            workflowId: id,
-          }));
-          await trx.insertInto('workflow_action').values(actionsWithWorkflowId).execute();
-        }
-      }
-
-      return await trx.selectFrom('workflow').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
-    });
+      .updateTable('workflow')
+      .set(workflow)
+      .where('id', '=', id)
+      .returningAll()
+      .returning((eb) => [
+        jsonArrayFrom(
+          eb.selectFrom('workflow_step').selectAll().whereRef('workflow_step.workflowId', '=', 'workflow.id'),
+        ).as('steps'),
+      ])
+      .executeTakeFirstOrThrow();
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
-  async deleteWorkflow(id: string) {
+  async delete(id: string) {
     await this.db.deleteFrom('workflow').where('id', '=', id).execute();
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
-  getFilters(workflowId: string) {
+  getSteps(workflowId: string) {
     return this.db
-      .selectFrom('workflow_filter')
+      .selectFrom('workflow_step')
       .selectAll()
       .where('workflowId', '=', workflowId)
       .orderBy('order', 'asc')
@@ -133,17 +103,78 @@ export class WorkflowRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
-  async deleteFiltersByWorkflow(workflowId: string) {
-    await this.db.deleteFrom('workflow_filter').where('workflowId', '=', workflowId).execute();
+  async deleteStep(workflowId: string, stepId: string) {
+    await this.db.deleteFrom('workflow_step').where('workflowId', '=', workflowId).where('id', '=', stepId).execute();
   }
 
-  @GenerateSql({ params: [DummyValue.UUID] })
-  getActions(workflowId: string) {
+  replaceSteps(id: string, steps: WorkflowStepDto[]) {
+    return this.db.transaction().execute(async (trx) => {
+      await trx.deleteFrom('workflow_step').where('workflowId', '=', id).execute();
+      if (steps.length === 0) {
+        return [];
+      }
+
+      return trx
+        .insertInto('workflow_step')
+        .values(
+          steps.map((step, i) => ({
+            workflowId: id,
+            enabled: step.enabled ?? true,
+            pluginMethodId: step.pluginMethodId,
+            config: step.config,
+            order: i,
+          })),
+        )
+        .returningAll()
+        .execute();
+    });
+  }
+
+  getForAssetV1(assetId: string) {
     return this.db
-      .selectFrom('workflow_action')
-      .selectAll()
-      .where('workflowId', '=', workflowId)
-      .orderBy('order', 'asc')
-      .execute();
+      .selectFrom('asset')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .select((eb) => [
+        ...columns.workflowAssetV1,
+        jsonObjectFrom(
+          eb
+            .selectFrom('asset_exif')
+            .select([
+              'asset_exif.make',
+              'asset_exif.model',
+              'asset_exif.orientation',
+              'asset_exif.dateTimeOriginal',
+              'asset_exif.modifyDate',
+              'asset_exif.exifImageWidth',
+              'asset_exif.exifImageHeight',
+              'asset_exif.fileSizeInByte',
+              'asset_exif.lensModel',
+              'asset_exif.fNumber',
+              'asset_exif.focalLength',
+              'asset_exif.iso',
+              'asset_exif.latitude',
+              'asset_exif.longitude',
+              'asset_exif.city',
+              'asset_exif.state',
+              'asset_exif.country',
+              'asset_exif.description',
+              'asset_exif.fps',
+              'asset_exif.exposureTime',
+              'asset_exif.livePhotoCID',
+              'asset_exif.timeZone',
+              'asset_exif.projectionType',
+              'asset_exif.profileDescription',
+              'asset_exif.colorspace',
+              'asset_exif.bitsPerSample',
+              'asset_exif.autoStackId',
+              'asset_exif.rating',
+              'asset_exif.tags',
+              'asset_exif.updatedAt',
+            ])
+            .whereRef('asset_exif.assetId', '=', 'asset.id'),
+        ).as('exifInfo'),
+      ])
+      .where('id', '=', assetId)
+      .executeTakeFirstOrThrow();
   }
 }

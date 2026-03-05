@@ -90,6 +90,8 @@ jobs:
       - name: Run formatter
         run: pnpm format
         if: ${{ !cancelled() }}
+      - name: Build app
+        run: pnpm run --filter immich --filter @immich/plugin-sdk build
       - name: Run tsc
         run: pnpm check
         if: ${{ !cancelled() }}
@@ -394,6 +396,8 @@ jobs:
           cache-dependency-path: '**/pnpm-lock.yaml'
       - name: Run pnpm install
         run: SHARP_IGNORE_GLOBAL_LIBVIPS=true pnpm install --frozen-lockfile
+      - name: Build plugin
+        run: pnpm run --filter @immich/plugin-sdk --filter @immich/plugin-core build
       - name: Run medium tests
         run: pnpm test:medium
         if: ${{ !cancelled() }}
@@ -722,7 +726,7 @@ jobs:
       - name: Install server dependencies
         run: SHARP_IGNORE_GLOBAL_LIBVIPS=true pnpm --filter immich install --frozen-lockfile
       - name: Build the app
-        run: pnpm --filter immich build
+        run: pnpm --filter immich --filter @immich/plugin-sdk build
       - name: Run API generation
         run: ./bin/generate-open-api.sh
         working-directory: open-api
@@ -784,7 +788,7 @@ jobs:
       - name: Install server dependencies
         run: SHARP_IGNORE_GLOBAL_LIBVIPS=true pnpm install --frozen-lockfile
       - name: Build the app
-        run: pnpm build
+        run: pnpm run --filter immich --filter @immich/plugin-sdk build
       - name: Run existing migrations
         run: pnpm migrations:run
       - name: Test npm run schema:reset command works

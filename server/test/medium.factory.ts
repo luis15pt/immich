@@ -410,7 +410,6 @@ const newRealRepository = <T>(key: ClassConstructor<T>, db: Kysely<DB>): T => {
     case OcrRepository:
     case PartnerRepository:
     case PersonRepository:
-    case PluginRepository:
     case SearchRepository:
     case SessionRepository:
     case SharedLinkRepository:
@@ -440,6 +439,10 @@ const newRealRepository = <T>(key: ClassConstructor<T>, db: Kysely<DB>): T => {
 
     case MetadataRepository: {
       return new key(LoggingRepository.create());
+    }
+
+    case PluginRepository: {
+      return new key(db, LoggingRepository.create());
     }
 
     case StorageRepository: {
@@ -473,7 +476,6 @@ const newMockRepository = <T>(key: ClassConstructor<T>) => {
     case OcrRepository:
     case PartnerRepository:
     case PersonRepository:
-    case PluginRepository:
     case SessionRepository:
     case SyncRepository:
     case SyncCheckpointRepository:

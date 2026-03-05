@@ -1,20 +1,16 @@
 {
-  "name": "immich-core",
+  "name": "immich-plugin-core",
   "version": "2.0.1",
-  "title": "Immich Core",
+  "title": "Immich Core Plugin",
   "description": "Core workflow capabilities for Immich",
   "author": "Immich Team",
-  "wasm": {
-    "path": "dist/plugin.wasm"
-  },
-  "filters": [
+  "wasmPath": "dist/plugin.wasm",
+  "methods": [
     {
-      "methodName": "filterFileName",
+      "name": "filterFileName",
       "title": "Filter by filename",
       "description": "Filter assets by filename pattern using text matching or regular expressions",
-      "supportedContexts": [
-        "asset"
-      ],
+      "types": ["AssetV1"],
       "schema": {
         "type": "object",
         "properties": {
@@ -26,11 +22,7 @@
           "matchType": {
             "type": "string",
             "title": "Match type",
-            "enum": [
-              "contains",
-              "regex",
-              "exact"
-            ],
+            "enum": ["contains", "regex", "exact"],
             "default": "contains",
             "description": "Type of pattern matching to perform"
           },
@@ -40,18 +32,14 @@
             "description": "Whether matching should be case-sensitive"
           }
         },
-        "required": [
-          "pattern"
-        ]
+        "required": ["pattern"]
       }
     },
     {
-      "methodName": "filterFileType",
+      "name": "filterFileType",
       "title": "Filter by file type",
       "description": "Filter assets by file type",
-      "supportedContexts": [
-        "asset"
-      ],
+      "types": ["AssetV1"],
       "schema": {
         "type": "object",
         "properties": {
@@ -60,26 +48,19 @@
             "title": "File types",
             "items": {
               "type": "string",
-              "enum": [
-                "image",
-                "video"
-              ]
+              "enum": ["image", "video"]
             },
             "description": "Allowed file types"
           }
         },
-        "required": [
-          "fileTypes"
-        ]
+        "required": ["fileTypes"]
       }
     },
     {
-      "methodName": "filterPerson",
+      "name": "filterPerson",
       "title": "Filter by person",
       "description": "Filter by detected person",
-      "supportedContexts": [
-        "person"
-      ],
+      "types": ["AssetV1"],
       "schema": {
         "type": "object",
         "properties": {
@@ -98,29 +79,21 @@
             "description": "Match any name (true) or require all names (false)"
           }
         },
-        "required": [
-          "personIds"
-        ]
+        "required": ["personIds"]
       }
-    }
-  ],
-  "actions": [
+    },
     {
-      "methodName": "actionArchive",
+      "name": "assetArchive",
       "title": "Archive",
       "description": "Move the asset to archive",
-      "supportedContexts": [
-        "asset"
-      ],
+      "types": ["AssetV1"],
       "schema": {}
     },
     {
-      "methodName": "actionFavorite",
+      "name": "assetFavorite",
       "title": "Favorite",
       "description": "Mark the asset as favorite or unfavorite",
-      "supportedContexts": [
-        "asset"
-      ],
+      "types": ["AssetV1"],
       "schema": {
         "type": "object",
         "properties": {
@@ -133,13 +106,10 @@
       }
     },
     {
-      "methodName": "actionAddToAlbum",
+      "name": "albumAddAssets",
       "title": "Add to Album",
       "description": "Add the item to a specified album",
-      "supportedContexts": [
-        "asset",
-        "person"
-      ],
+      "types": ["AssetV1"],
       "schema": {
         "type": "object",
         "properties": {
@@ -150,9 +120,7 @@
             "subType": "album-picker"
           }
         },
-        "required": [
-          "albumId"
-        ]
+        "required": ["albumId"]
       }
     }
   ]

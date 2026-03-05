@@ -45,6 +45,7 @@ import { UserAdminService } from 'src/services/user-admin.service';
 import { UserService } from 'src/services/user.service';
 import { VersionService } from 'src/services/version.service';
 import { ViewService } from 'src/services/view.service';
+import { WorkflowExecutionService } from 'src/services/workflow-execution.service';
 import { WorkflowService } from 'src/services/workflow.service';
 
 export const services = [
@@ -95,5 +96,6 @@ export const services = [
   UserService,
   VersionService,
   ViewService,
+  WorkflowExecutionService,
   WorkflowService,
 ];

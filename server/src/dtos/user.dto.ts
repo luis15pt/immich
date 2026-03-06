@@ -3,7 +3,7 @@ import { Transform } from 'class-transformer';
 import { IsEmail, IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
 import { User, UserAdmin } from 'src/database';
 import { UserAvatarColor, UserMetadataKey, UserStatus } from 'src/enum';
-import { UserMetadataItem } from 'src/types';
+import { MaybeDehydrated, UserMetadataItem } from 'src/types';
 import { Optional, PinCode, ValidateBoolean, ValidateEnum, ValidateUUID, toEmail, toSanitized } from 'src/validation';
 
 export class UserUpdateMeDto {
@@ -68,14 +68,14 @@ const emailToAvatarColor = (email: string): UserAvatarColor => {
   return values[randomIndex];
 };
 
-export const mapUser = (entity: User | UserAdmin): UserResponseDto => {
+export const mapUser = (entity: MaybeDehydrated<User | UserAdmin>): UserResponseDto => {
   return {
     id: entity.id,
     email: entity.email,
     name: entity.name,
     profileImagePath: entity.profileImagePath,
     avatarColor: entity.avatarColor ?? emailToAvatarColor(entity.email),
-    profileChangedAt: entity.profileChangedAt,
+    profileChangedAt: new Date(entity.profileChangedAt),
   };
 };
 

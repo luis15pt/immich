@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Exif } from 'src/database';
+import { MaybeDehydrated } from 'src/types';
 
 export class ExifResponseDto {
   @ApiPropertyOptional({ description: 'Camera make' })
@@ -49,7 +50,7 @@ export class ExifResponseDto {
   rating?: number | null = null;
 }
 
-export function mapExif(entity: Exif): ExifResponseDto {
+export function mapExif(entity: MaybeDehydrated<Exif>): ExifResponseDto {
   return {
     make: entity.make,
     model: entity.model,
@@ -57,8 +58,8 @@ export function mapExif(entity: Exif): ExifResponseDto {
     exifImageHeight: entity.exifImageHeight,
     fileSizeInByte: entity.fileSizeInByte ? Number.parseInt(entity.fileSizeInByte.toString()) : null,
     orientation: entity.orientation,
-    dateTimeOriginal: entity.dateTimeOriginal,
-    modifyDate: entity.modifyDate,
+    dateTimeOriginal: entity.dateTimeOriginal ? new Date(entity.dateTimeOriginal) : null,
+    modifyDate: entity.modifyDate ? new Date(entity.modifyDate) : null,
     timeZone: entity.timeZone,
     lensModel: entity.lensModel,
     fNumber: entity.fNumber,

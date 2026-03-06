@@ -5,17 +5,25 @@ with
   "duplicates" as (
     select
       "asset"."duplicateId",
-      json_agg(
-        "asset2"
-        order by
-          "asset"."localDateTime" asc
+      (
+        select
+          coalesce(json_agg(agg), '[]')
+        from
+          (
+            select
+              *
+            from
+              "asset2"
+            order by
+              "asset"."localDateTime" asc
+          ) as agg
       ) as "assets"
     from
       "asset"
       inner join lateral (
         select
           "asset".*,
-          "asset_exif" as "exifInfo"
+          to_json("asset_exif") as "exifInfo"
         from
           "asset_exif"
         where

@@ -57,8 +57,8 @@ describe(SharedLinkService.name, () => {
 
       await expect(sut.get(auth, sharedLink.id)).resolves.toMatchObject({
         album: expect.objectContaining({
-          startDate: '2020-01-01T00:00:00+00:00',
-          endDate: '2022-01-01T00:00:00+00:00',
+          startDate: new Date('2020-01-01T00:00:00+00:00'),
+          endDate: new Date('2022-01-01T00:00:00+00:00'),
         }),
       });
     });

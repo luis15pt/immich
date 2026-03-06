@@ -9,7 +9,7 @@ import { AuthDto } from 'src/dtos/auth.dto';
 import { AssetEditActionItem } from 'src/dtos/editing.dto';
 import { SourceType } from 'src/enum';
 import { AssetFaceTable } from 'src/schema/tables/asset-face.table';
-import { ImageDimensions } from 'src/types';
+import { ImageDimensions, MaybeDehydrated } from 'src/types';
 import { asDateString } from 'src/utils/date';
 import { transformFaceBoundingBox } from 'src/utils/transform';
 import {
@@ -222,7 +222,7 @@ export class PeopleResponseDto {
   hasNextPage?: boolean;
 }
 
-export function mapPerson(person: Person): PersonResponseDto {
+export function mapPerson(person: MaybeDehydrated<Person>): PersonResponseDto {
   return {
     id: person.id,
     name: person.name,
@@ -231,12 +231,12 @@ export function mapPerson(person: Person): PersonResponseDto {
     isHidden: person.isHidden,
     isFavorite: person.isFavorite,
     color: person.color ?? undefined,
-    updatedAt: person.updatedAt,
+    updatedAt: new Date(person.updatedAt),
   };
 }
 
 export function mapFacesWithoutPerson(
-  face: Selectable<AssetFaceTable>,
+  face: MaybeDehydrated<Selectable<AssetFaceTable>>,
   edits?: AssetEditActionItem[],
   assetDimensions?: ImageDimensions,
 ): AssetFaceWithoutPersonResponseDto {
@@ -266,6 +266,14 @@ export function mapFaces(
 ): AssetFaceResponseDto {
   return {
     ...mapFacesWithoutPerson(face, edits, assetDimensions),
-    person: face.person?.ownerId === auth.user.id ? mapPerson(face.person) : null,
+    person:
+      face.person?.ownerId === auth.user.id
+        ? mapPerson({
+            ...face.person,
+            birthDate: face.person.birthDate ? new Date(face.person.birthDate) : null,
+            createdAt: new Date(face.person.createdAt),
+            updatedAt: new Date(face.person.updatedAt),
+          })
+        : null,
   };
 }

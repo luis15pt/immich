@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Selectable } from 'kysely';
+import { Selectable, ShallowDehydrateObject } from 'kysely';
 import { AssetFace, AssetFile, Exif, Stack, Tag, User } from 'src/database';
 import { HistoryBuilder, Property } from 'src/decorators';
 import { AuthDto } from 'src/dtos/auth.dto';
@@ -14,7 +14,7 @@ import {
 import { TagResponseDto, mapTag } from 'src/dtos/tag.dto';
 import { UserResponseDto, mapUser } from 'src/dtos/user.dto';
 import { AssetStatus, AssetType, AssetVisibility } from 'src/enum';
-import { ImageDimensions } from 'src/types';
+import { ImageDimensions, MaybeDehydrated } from 'src/types';
 import { getDimensions } from 'src/utils/asset.util';
 import { hexOrBufferToBase64 } from 'src/utils/bytes';
 import { mimeTypes } from 'src/utils/mime-types';
@@ -151,13 +151,13 @@ export type MapAsset = {
   deviceId: string;
   duplicateId: string | null;
   duration: string | null;
-  edits?: AssetEditActionItem[];
+  edits?: ShallowDehydrateObject<AssetEditActionItem>[];
   encodedVideoPath: string | null;
-  exifInfo?: Selectable<Exif> | null;
-  faces?: AssetFace[];
+  exifInfo?: ShallowDehydrateObject<Selectable<Exif>> | null;
+  faces?: ShallowDehydrateObject<AssetFace>[];
   fileCreatedAt: Date;
   fileModifiedAt: Date;
-  files?: AssetFile[];
+  files?: ShallowDehydrateObject<AssetFile>[];
   isExternal: boolean;
   isFavorite: boolean;
   isOffline: boolean;
@@ -167,11 +167,11 @@ export type MapAsset = {
   localDateTime: Date;
   originalFileName: string;
   originalPath: string;
-  owner?: User | null;
+  owner?: ShallowDehydrateObject<User> | null;
   ownerId: string;
-  stack?: Stack | null;
+  stack?: (ShallowDehydrateObject<Stack> & { assets: Stack['assets'] }) | null;
   stackId: string | null;
-  tags?: Tag[];
+  tags?: ShallowDehydrateObject<Tag>[];
   thumbhash: Buffer<ArrayBufferLike> | null;
   type: AssetType;
   width: number | null;
@@ -197,7 +197,7 @@ export type AssetMapOptions = {
 };
 
 const peopleWithFaces = (
-  faces?: AssetFace[],
+  faces?: MaybeDehydrated<AssetFace>[],
   edits?: AssetEditActionItem[],
   assetDimensions?: ImageDimensions,
 ): PersonWithFacesResponseDto[] => {
@@ -213,7 +213,10 @@ const peopleWithFaces = (
     }
 
     if (!peopleFaces.has(face.person.id)) {
-      peopleFaces.set(face.person.id, { ...mapPerson(face.person), faces: [] });
+      peopleFaces.set(face.person.id, {
+        ...mapPerson(face.person),
+        faces: [],
+      });
     }
     const mappedFace = mapFacesWithoutPerson(face, edits, assetDimensions);
     peopleFaces.get(face.person.id)!.faces.push(mappedFace);
@@ -234,7 +237,7 @@ const mapStack = (entity: { stack?: Stack | null }) => {
   };
 };
 
-export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): AssetResponseDto {
+export function mapAsset(entity: MaybeDehydrated<MapAsset>, options: AssetMapOptions = {}): AssetResponseDto {
   const { stripMetadata = false, withStack = false } = options;
 
   if (stripMetadata) {
@@ -243,7 +246,7 @@ export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): Asset
       type: entity.type,
       originalMimeType: mimeTypes.lookup(entity.originalFileName),
       thumbhash: entity.thumbhash ? hexOrBufferToBase64(entity.thumbhash) : null,
-      localDateTime: entity.localDateTime,
+      localDateTime: new Date(entity.localDateTime),
       duration: entity.duration ?? '0:00:00.00000',
       livePhotoVideoId: entity.livePhotoVideoId,
       hasMetadata: false,
@@ -257,7 +260,7 @@ export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): Asset
 
   return {
     id: entity.id,
-    createdAt: entity.createdAt,
+    createdAt: new Date(entity.createdAt),
     deviceAssetId: entity.deviceAssetId,
     ownerId: entity.ownerId,
     owner: entity.owner ? mapUser(entity.owner) : undefined,
@@ -268,10 +271,10 @@ export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): Asset
     originalFileName: entity.originalFileName,
     originalMimeType: mimeTypes.lookup(entity.originalFileName),
     thumbhash: entity.thumbhash ? hexOrBufferToBase64(entity.thumbhash) : null,
-    fileCreatedAt: entity.fileCreatedAt,
-    fileModifiedAt: entity.fileModifiedAt,
-    localDateTime: entity.localDateTime,
-    updatedAt: entity.updatedAt,
+    fileCreatedAt: new Date(entity.fileCreatedAt),
+    fileModifiedAt: new Date(entity.fileModifiedAt),
+    localDateTime: new Date(entity.localDateTime),
+    updatedAt: new Date(entity.updatedAt),
     isFavorite: options.auth?.user.id === entity.ownerId && entity.isFavorite,
     isArchived: entity.visibility === AssetVisibility.Archive,
     isTrashed: !!entity.deletedAt,
@@ -283,7 +286,7 @@ export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): Asset
     people: peopleWithFaces(entity.faces, entity.edits, assetDimensions),
     unassignedFaces: entity.faces
       ?.filter((face) => !face.person)
-      .map((a) => mapFacesWithoutPerson(a, entity.edits, assetDimensions)),
+      .map((face) => mapFacesWithoutPerson(face, entity.edits, assetDimensions)),
     checksum: hexOrBufferToBase64(entity.checksum)!,
     stack: withStack ? mapStack(entity) : undefined,
     isOffline: entity.isOffline,

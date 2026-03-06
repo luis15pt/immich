@@ -1,13 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { ArrayNotEmpty, IsArray, IsString, ValidateNested } from 'class-validator';
+import { ShallowDehydrateObject } from 'kysely';
 import _ from 'lodash';
 import { AlbumUser, AuthSharedLink, User } from 'src/database';
 import { BulkIdErrorReason } from 'src/dtos/asset-ids.response.dto';
 import { AssetResponseDto, MapAsset, mapAsset } from 'src/dtos/asset-response.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { UserResponseDto, mapUser } from 'src/dtos/user.dto';
+import { mapUser, UserResponseDto } from 'src/dtos/user.dto';
 import { AlbumUserRole, AssetOrder } from 'src/enum';
+import { MaybeDehydrated } from 'src/types';
 import { Optional, ValidateBoolean, ValidateEnum, ValidateUUID } from 'src/validation';
 
 export class AlbumInfoDto {
@@ -191,8 +193,8 @@ export class AlbumResponseDto {
 
 export type MapAlbumDto = {
   albumUsers?: AlbumUser[];
-  assets?: MapAsset[];
-  sharedLinks?: AuthSharedLink[];
+  assets?: ShallowDehydrateObject<MapAsset>[];
+  sharedLinks?: ShallowDehydrateObject<AuthSharedLink>[];
   albumName: string;
   description: string;
   albumThumbnailAssetId: string | null;
@@ -200,17 +202,21 @@ export type MapAlbumDto = {
   updatedAt: Date;
   id: string;
   ownerId: string;
-  owner: User;
+  owner: ShallowDehydrateObject<User>;
   isActivityEnabled: boolean;
   order: AssetOrder;
 };
 
-export const mapAlbum = (entity: MapAlbumDto, withAssets: boolean, auth?: AuthDto): AlbumResponseDto => {
+export const mapAlbum = (
+  entity: MaybeDehydrated<MapAlbumDto>,
+  withAssets: boolean,
+  auth?: AuthDto,
+): AlbumResponseDto => {
   const albumUsers: AlbumUserResponseDto[] = [];
 
   if (entity.albumUsers) {
     for (const albumUser of entity.albumUsers) {
-      const user = mapUser(albumUser.user);
+      const user = mapUser({ ...albumUser.user, profileChangedAt: new Date(albumUser.user.profileChangedAt) });
       albumUsers.push({
         user,
         role: albumUser.role,
@@ -236,16 +242,16 @@ export const mapAlbum = (entity: MapAlbumDto, withAssets: boolean, auth?: AuthDt
     albumName: entity.albumName,
     description: entity.description,
     albumThumbnailAssetId: entity.albumThumbnailAssetId,
-    createdAt: entity.createdAt,
-    updatedAt: entity.updatedAt,
+    createdAt: new Date(entity.createdAt),
+    updatedAt: new Date(entity.updatedAt),
     id: entity.id,
     ownerId: entity.ownerId,
     owner: mapUser(entity.owner),
     albumUsers: albumUsersSorted,
     shared: hasSharedUser || hasSharedLink,
     hasSharedLink,
-    startDate,
-    endDate,
+    startDate: startDate ? new Date(startDate) : undefined,
+    endDate: endDate ? new Date(endDate) : undefined,
     assets: (withAssets ? assets : []).map((asset) => mapAsset(asset, { auth })),
     assetCount: entity.assets?.length || 0,
     isActivityEnabled: entity.isActivityEnabled,
@@ -253,5 +259,5 @@ export const mapAlbum = (entity: MapAlbumDto, withAssets: boolean, auth?: AuthDt
   };
 };
 
-export const mapAlbumWithAssets = (entity: MapAlbumDto) => mapAlbum(entity, true);
-export const mapAlbumWithoutAssets = (entity: MapAlbumDto) => mapAlbum(entity, false);
+export const mapAlbumWithAssets = (entity: MaybeDehydrated<MapAlbumDto>) => mapAlbum(entity, true);
+export const mapAlbumWithoutAssets = (entity: MaybeDehydrated<MapAlbumDto>) => mapAlbum(entity, false);

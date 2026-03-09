@@ -16,7 +16,9 @@ import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.net.Socket
@@ -37,6 +39,8 @@ private const val PREFS_NAME = "immich.ssl"
 private const val PREFS_CERT_ALIAS = "immich.client_cert"
 private const val PREFS_HEADERS = "immich.request_headers"
 private const val PREFS_SERVER_URL = "immich.server_url"
+private const val PREFS_SERVER_URLS = "immich.server_urls"
+private const val PREFS_COOKIES = "immich.cookies"
 
 /**
  * Manages a shared OkHttpClient with SSL configuration support.
@@ -62,7 +66,7 @@ object HttpClientManager {
   var headers: Headers = Headers.headersOf()
     private set
 
-  private val cookieJar = InMemoryCookieJar()
+  private val cookieJar = PersistentCookieJar()
 
   val isMtls: Boolean get() = keyChainAlias != null || keyStore.containsAlias(CERT_ALIAS)
 
@@ -75,15 +79,21 @@ object HttpClientManager {
       prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
       keyChainAlias = prefs.getString(PREFS_CERT_ALIAS, null)
 
+      cookieJar.init(prefs)
+
       val savedHeaders = prefs.getString(PREFS_HEADERS, null)
       if (savedHeaders != null) {
-        val json = JSONObject(savedHeaders)
-        val headerMap = mutableMapOf<String, String>()
-        for (key in json.keys()) {
-          headerMap[key] = json.getString(key)
+        val map = Json.decodeFromString<Map<String, String>>(savedHeaders)
+        val builder = Headers.Builder()
+        for ((key, value) in map) {
+          if (key != "x-immich-user-token") builder.add(key, value)
         }
-        val serverUrl = prefs.getString(PREFS_SERVER_URL, null)
-        applyHeaders(headerMap, listOfNotNull(serverUrl))
+        headers = builder.build()
+      }
+
+      val serverUrlsJson = prefs.getString(PREFS_SERVER_URLS, null)
+      if (serverUrlsJson != null) {
+        cookieJar.setServerUrls(Json.decodeFromString<List<String>>(serverUrlsJson))
       }
 
       val cacheDir = File(File(context.cacheDir, "okhttp"), "api")
@@ -162,48 +172,41 @@ object HttpClientManager {
 
   fun setRequestHeaders(headerMap: Map<String, String>, serverUrls: List<String>) {
     synchronized(this) {
-      applyHeaders(headerMap, serverUrls)
-      val newUrl = serverUrls.firstOrNull()
+      val builder = Headers.Builder()
+      headerMap.forEach { (key, value) -> builder[key] = value }
+      headers = builder.build()
+
+      cookieJar.setServerUrls(serverUrls)
+
       prefs.edit {
-        putString(PREFS_HEADERS, JSONObject(headerMap).toString())
+        putString(PREFS_HEADERS, Json.encodeToString(headerMap))
+        putString(PREFS_SERVER_URLS, Json.encodeToString(serverUrls))
+        val newUrl = serverUrls.firstOrNull()
         if (newUrl != null) putString(PREFS_SERVER_URL, newUrl) else remove(PREFS_SERVER_URL)
       }
     }
   }
 
-  private fun applyHeaders(headerMap: Map<String, String>, serverUrls: List<String>) {
-    val token = headerMap["x-immich-user-token"]
-    val builder = Headers.Builder()
-    headerMap.forEach { (key, value) ->
-      if (key != "x-immich-user-token") builder[key] = value
-    }
-    headers = builder.build()
-    if (token == null) return
-
+  fun bootstrapCookies(token: String, serverUrls: List<String>) {
+    val url = serverUrls.firstNotNullOfOrNull { it.toHttpUrlOrNull() } ?: return
     val expiry = System.currentTimeMillis() + 400L * 24 * 60 * 60 * 1000
-    for (serverUrl in serverUrls) {
-      val url = serverUrl.toHttpUrlOrNull() ?: continue
-      cookieJar.saveFromResponse(url, listOf(
-        cookie(url, "immich_access_token", token, expiry, httpOnly = true),
-        cookie(url, "immich_is_authenticated", "true", expiry, httpOnly = false),
-        cookie(url, "immich_auth_type", "password", expiry, httpOnly = true),
-      ))
-    }
-  }
-
-  private fun cookie(url: HttpUrl, name: String, value: String, expiry: Long, httpOnly: Boolean): Cookie {
-    return Cookie.Builder().name(name).value(value).domain(url.host).path("/").expiresAt(expiry)
-      .apply {
-        if (url.isHttps) secure()
-        if (httpOnly) httpOnly()
-      }.build()
+    fun cookie(name: String, value: String, httpOnly: Boolean) =
+      Cookie.Builder().name(name).value(value).domain(url.host).path("/").expiresAt(expiry)
+        .apply {
+          if (url.isHttps) secure()
+          if (httpOnly) httpOnly()
+        }.build()
+    cookieJar.saveFromResponse(url, listOf(
+      cookie("immich_access_token", token, httpOnly = true),
+      cookie("immich_is_authenticated", "true", httpOnly = false),
+      cookie("immich_auth_type", "password", httpOnly = true),
+    ))
   }
 
   fun loadCookieHeader(url: String): String? {
     val httpUrl = url.toHttpUrlOrNull() ?: return null
-    val cookies = cookieJar.loadForRequest(httpUrl)
-    if (cookies.isEmpty()) return null
-    return cookies.joinToString("; ") { "${it.name}=${it.value}" }
+    return cookieJar.loadForRequest(httpUrl).takeIf { it.isNotEmpty() }
+      ?.joinToString("; ") { "${it.name}=${it.value}" }
   }
 
   private fun build(cacheDir: File): OkHttpClient {
@@ -285,8 +288,31 @@ object HttpClientManager {
     ): String? = null
   }
 
-  private class InMemoryCookieJar : CookieJar {
+  /**
+   * Persistent CookieJar that duplicates auth cookies across equivalent server URLs.
+   * When the server sets cookies for one domain, copies are created for all other known
+   * server domains (for URL switching between local/remote endpoints of the same server).
+   */
+  private class PersistentCookieJar : CookieJar {
     private val store = mutableListOf<Cookie>()
+    private var serverUrls = listOf<HttpUrl>()
+    private var prefs: SharedPreferences? = null
+
+    companion object {
+      val AUTH_COOKIE_NAMES = setOf("immich_access_token", "immich_is_authenticated", "immich_auth_type")
+    }
+
+    fun init(prefs: SharedPreferences) {
+      this.prefs = prefs
+      restore()
+    }
+
+    @Synchronized
+    fun setServerUrls(urls: List<String>) {
+      serverUrls = urls.mapNotNull { it.toHttpUrlOrNull() }
+      duplicateAuthCookies()
+      persist()
+    }
 
     @Synchronized
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
@@ -294,6 +320,8 @@ object HttpClientManager {
         cookies.any { it.name == existing.name && it.domain == existing.domain && it.path == existing.path }
       }
       store.addAll(cookies)
+      if (serverUrls.any { it.host == url.host }) duplicateAuthCookies()
+      persist()
     }
 
     @Synchronized
@@ -301,6 +329,75 @@ object HttpClientManager {
       val now = System.currentTimeMillis()
       store.removeAll { it.expiresAt < now }
       return store.filter { it.matches(url) }
+    }
+
+    private fun duplicateAuthCookies() {
+      val sourceCookies = store.filter { it.name in AUTH_COOKIE_NAMES }.associateBy { it.name }
+      if (sourceCookies.isEmpty()) return
+
+      for (url in serverUrls) {
+        for ((_, source) in sourceCookies) {
+          if (store.any { it.name == source.name && it.domain == url.host && it.value == source.value }) continue
+          store.removeAll { it.name == source.name && it.domain == url.host }
+          store.add(rebuildCookie(source, url))
+        }
+      }
+    }
+
+    private fun rebuildCookie(source: Cookie, url: HttpUrl): Cookie {
+      return Cookie.Builder()
+        .name(source.name).value(source.value)
+        .domain(url.host).path("/")
+        .expiresAt(source.expiresAt)
+        .apply {
+          if (url.isHttps) secure()
+          if (source.httpOnly) httpOnly()
+        }
+        .build()
+    }
+
+    private fun persist() {
+      val p = prefs ?: return
+      p.edit { putString(PREFS_COOKIES, Json.encodeToString(store.map { SerializedCookie.from(it) })) }
+    }
+
+    private fun restore() {
+      val p = prefs ?: return
+      val jsonStr = p.getString(PREFS_COOKIES, null) ?: return
+      try {
+        store.addAll(Json.decodeFromString<List<SerializedCookie>>(jsonStr).map { it.toCookie() })
+      } catch (_: Exception) {
+        store.clear()
+      }
+    }
+  }
+
+  @Serializable
+  private data class SerializedCookie(
+    val name: String,
+    val value: String,
+    val domain: String,
+    val path: String,
+    val expiresAt: Long,
+    val secure: Boolean,
+    val httpOnly: Boolean,
+    val hostOnly: Boolean,
+  ) {
+    fun toCookie(): Cookie = Cookie.Builder()
+      .name(name).value(value).path(path).expiresAt(expiresAt)
+      .apply {
+        if (hostOnly) hostOnlyDomain(domain) else domain(domain)
+        if (secure) secure()
+        if (httpOnly) httpOnly()
+      }
+      .build()
+
+    companion object {
+      fun from(cookie: Cookie) = SerializedCookie(
+        name = cookie.name, value = cookie.value, domain = cookie.domain,
+        path = cookie.path, expiresAt = cookie.expiresAt, secure = cookie.secure,
+        httpOnly = cookie.httpOnly, hostOnly = cookie.hostOnly,
+      )
     }
   }
 }

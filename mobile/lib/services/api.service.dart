@@ -205,23 +205,12 @@ class ApiService implements Authentication {
   }
 
   static Map<String, String> getRequestHeaders() {
-    var accessToken = Store.get(StoreKey.accessToken, "");
     var customHeadersStr = Store.get(StoreKey.customHeaders, "");
-    var header = <String, String>{};
-    if (accessToken.isNotEmpty) {
-      header['x-immich-user-token'] = accessToken;
-    }
-
     if (customHeadersStr.isEmpty) {
-      return header;
+      return const {};
     }
 
-    var customHeaders = jsonDecode(customHeadersStr) as Map;
-    customHeaders.forEach((key, value) {
-      header[key] = value;
-    });
-
-    return header;
+    return jsonDecode(customHeadersStr) as Map<String, String>;
   }
 
   @override

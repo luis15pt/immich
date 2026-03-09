@@ -22,6 +22,7 @@ import 'package:immich_mobile/infrastructure/repositories/db.repository.dart';
 import 'package:immich_mobile/infrastructure/repositories/log.repository.dart';
 import 'package:immich_mobile/infrastructure/repositories/logger_db.repository.dart';
 import 'package:immich_mobile/infrastructure/repositories/network.repository.dart';
+import 'package:immich_mobile/services/api.service.dart';
 import 'package:immich_mobile/infrastructure/repositories/store.repository.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
@@ -109,5 +110,9 @@ abstract final class Bootstrap {
     );
 
     await NetworkRepository.init();
+    await NetworkRepository.setHeaders(
+      ApiService.getRequestHeaders(),
+      ApiService.getServerUrls(),
+    );
   }
 }

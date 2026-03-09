@@ -8,9 +8,13 @@ import app.alextran.immich.BuildConfig
 import app.alextran.immich.NativeBuffer
 import okhttp3.Cache
 import okhttp3.ConnectionPool
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.Credentials
 import okhttp3.Dispatcher
 import okhttp3.Headers
-import okhttp3.Credentials
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -58,6 +62,8 @@ object HttpClientManager {
   var headers: Headers = Headers.headersOf()
     private set
 
+  private val cookieJar = InMemoryCookieJar()
+
   val isMtls: Boolean get() = keyChainAlias != null || keyStore.containsAlias(CERT_ALIAS)
 
   fun initialize(context: Context) {
@@ -72,11 +78,12 @@ object HttpClientManager {
       val savedHeaders = prefs.getString(PREFS_HEADERS, null)
       if (savedHeaders != null) {
         val json = JSONObject(savedHeaders)
-        val builder = Headers.Builder()
+        val headerMap = mutableMapOf<String, String>()
         for (key in json.keys()) {
-          builder.add(key, json.getString(key))
+          headerMap[key] = json.getString(key)
         }
-        headers = builder.build()
+        val serverUrl = prefs.getString(PREFS_SERVER_URL, null)
+        applyHeaders(headerMap, listOfNotNull(serverUrl))
       }
 
       val cacheDir = File(File(context.cacheDir, "okhttp"), "api")
@@ -155,21 +162,48 @@ object HttpClientManager {
 
   fun setRequestHeaders(headerMap: Map<String, String>, serverUrls: List<String>) {
     synchronized(this) {
-      val builder = Headers.Builder()
-      headerMap.forEach { (key, value) -> builder[key] = value }
-      val newHeaders = builder.build()
-      val headersChanged = headers != newHeaders
+      applyHeaders(headerMap, serverUrls)
       val newUrl = serverUrls.firstOrNull()
-      val urlChanged = newUrl != prefs.getString(PREFS_SERVER_URL, null)
-      if (!headersChanged && !urlChanged) return
-      headers = newHeaders
       prefs.edit {
-        if (headersChanged) putString(PREFS_HEADERS, JSONObject(headerMap).toString())
-        if (urlChanged) {
-          if (newUrl != null) putString(PREFS_SERVER_URL, newUrl) else remove(PREFS_SERVER_URL)
-        }
+        putString(PREFS_HEADERS, JSONObject(headerMap).toString())
+        if (newUrl != null) putString(PREFS_SERVER_URL, newUrl) else remove(PREFS_SERVER_URL)
       }
     }
+  }
+
+  private fun applyHeaders(headerMap: Map<String, String>, serverUrls: List<String>) {
+    val token = headerMap["x-immich-user-token"]
+    val builder = Headers.Builder()
+    headerMap.forEach { (key, value) ->
+      if (key != "x-immich-user-token") builder[key] = value
+    }
+    headers = builder.build()
+    if (token == null) return
+
+    val expiry = System.currentTimeMillis() + 400L * 24 * 60 * 60 * 1000
+    for (serverUrl in serverUrls) {
+      val url = serverUrl.toHttpUrlOrNull() ?: continue
+      cookieJar.saveFromResponse(url, listOf(
+        cookie(url, "immich_access_token", token, expiry, httpOnly = true),
+        cookie(url, "immich_is_authenticated", "true", expiry, httpOnly = false),
+        cookie(url, "immich_auth_type", "password", expiry, httpOnly = true),
+      ))
+    }
+  }
+
+  private fun cookie(url: HttpUrl, name: String, value: String, expiry: Long, httpOnly: Boolean): Cookie {
+    return Cookie.Builder().name(name).value(value).domain(url.host).path("/").expiresAt(expiry)
+      .apply {
+        if (url.isHttps) secure()
+        if (httpOnly) httpOnly()
+      }.build()
+  }
+
+  fun loadCookieHeader(url: String): String? {
+    val httpUrl = url.toHttpUrlOrNull() ?: return null
+    val cookies = cookieJar.loadForRequest(httpUrl)
+    if (cookies.isEmpty()) return null
+    return cookies.joinToString("; ") { "${it.name}=${it.value}" }
   }
 
   private fun build(cacheDir: File): OkHttpClient {
@@ -188,6 +222,7 @@ object HttpClientManager {
     HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.socketFactory)
 
     return OkHttpClient.Builder()
+      .cookieJar(cookieJar)
       .addInterceptor {
         val request = it.request()
         val builder = request.newBuilder()
@@ -248,5 +283,24 @@ object HttpClientManager {
       issuers: Array<Principal>?,
       socket: Socket?
     ): String? = null
+  }
+
+  private class InMemoryCookieJar : CookieJar {
+    private val store = mutableListOf<Cookie>()
+
+    @Synchronized
+    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+      store.removeAll { existing ->
+        cookies.any { it.name == existing.name && it.domain == existing.domain && it.path == existing.path }
+      }
+      store.addAll(cookies)
+    }
+
+    @Synchronized
+    override fun loadForRequest(url: HttpUrl): List<Cookie> {
+      val now = System.currentTimeMillis()
+      store.removeAll { it.expiresAt < now }
+      return store.filter { it.matches(url) }
+    }
   }
 }

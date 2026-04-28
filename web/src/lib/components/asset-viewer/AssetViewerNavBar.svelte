@@ -29,6 +29,7 @@
   import { getSharedLink, withoutIcons } from '$lib/utils';
   import type { OnUndoDelete } from '$lib/utils/actions';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
+  import { ProjectionType } from '$lib/constants';
   import {
     AssetTypeEnum,
     AssetVisibility,
@@ -44,6 +45,8 @@
     mdiCompare,
     mdiDotsVertical,
     mdiImageSearch,
+    mdiPanoramaSphere,
+    mdiPanoramaWideAngle,
     mdiPresentationPlay,
     mdiVideoOutline,
   } from '@mdi/js';
@@ -96,6 +99,14 @@
     shortcuts: [{ key: 'Escape' }],
   });
 
+  const TogglePanoramaView: ActionItem = $derived({
+    title: assetViewerManager.isPanoramaFlatView ? '360° view' : 'Flat view',
+    icon: assetViewerManager.isPanoramaFlatView ? mdiPanoramaSphere : mdiPanoramaWideAngle,
+    $if: () =>
+      asset.type === AssetTypeEnum.Video && asset.exifInfo?.projectionType === ProjectionType.EQUIRECTANGULAR,
+    onAction: () => (assetViewerManager.isPanoramaFlatView = !assetViewerManager.isPanoramaFlatView),
+  });
+
   const Actions = $derived(getAssetActions($t, asset));
   const sharedLink = getSharedLink();
 </script>
@@ -122,6 +133,7 @@
         {/snippet}
       </Tooltip>
     {/if}
+    <ActionButton action={TogglePanoramaView} />
     <ActionButton action={Cast} />
     <ActionButton action={Actions.Share} />
     <ActionButton action={Actions.Offline} />

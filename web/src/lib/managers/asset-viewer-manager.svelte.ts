@@ -54,6 +54,7 @@ class AssetViewerManager extends BaseEventManager<Events> {
   isShowActivityPanel = $state(false);
   isPlayingMotionPhoto = $state(false);
   isShowEditor = $state(false);
+  isPanoramaFlatView = $state(true);
   #isFaceEditMode = $state(false);
   #isEditFacesPanelOpen = $state(false);
   #viewingAssetStoreState = $state<AssetResponseDto>();
